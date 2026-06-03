@@ -1,139 +1,152 @@
-# ✦ Glow Journal — Skincare Progress Tracker
+# ✦ Glow Journal — Skincare Tracker
 
-## Quick Start (Windows)
+## ⚠️ IMPORTANT: Use PowerShell, not Command Prompt
 
-### 1. Install these first (one time)
-| Tool | Download |
-|---|---|
-| Python 3.11+ | https://python.org — ✅ check "Add to PATH" |
-| Node.js LTS | https://nodejs.org |
-| PostgreSQL | https://postgresql.org/download/windows — remember the password you set |
+To open PowerShell: right-click the Start button → "Windows PowerShell"
 
-### 2. First-time setup
-Double-click **`setup-local.bat`** — it installs everything automatically.
+---
 
-### 3. Run the app (every time)
+## Prerequisites (install these first)
 
-Open **two** Command Prompt windows:
+| Tool | Version | Notes |
+|---|---|---|
+| Python | **3.11 exactly** | https://python.org/downloads/release/python-3119/ — ✅ check "Add Python to PATH" |
+| Node.js | LTS | https://nodejs.org |
+| PostgreSQL | 18 | https://postgresql.org/download/windows — remember your password |
+
+> ⚠️ **Python 3.12+ and 3.14 will NOT work.** The packages require Python 3.11.
+
+---
+
+## First-time setup
+
+### Step 1 — Allow PowerShell scripts (run once as Administrator)
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+If that still blocks scripts, prefix every `.ps1` command with:
+```powershell
+powershell -ExecutionPolicy Bypass -File .\setup.ps1
+```
+
+### Step 2 — Create the database
+PostgreSQL on Windows often runs on port **5433** (not 5432). Check yours:
+```powershell
+netstat -ano | findstr "543"
+```
+Then create the database (replace 5433 with your actual port):
+```powershell
+$env:PGPASSWORD="postgres"; psql -U postgres -p 5433 -c "CREATE DATABASE skincare_tracker;"
+```
+
+### Step 3 — Create the .env file
+```powershell
+cd backend
+Set-Content ".env.development" "DATABASE_URL=postgresql://postgres:postgres@localhost:5433/skincare_tracker
+SECRET_KEY=local-dev-secret-do-not-use-in-prod
+STORAGE_BACKEND=local
+BACKEND_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:3000
+ENVIRONMENT=development
+MAX_IMAGE_SIZE_MB=15
+ANTHROPIC_API_KEY="
+```
+> Replace `5433` with your port and `postgres` with your actual PostgreSQL password if different.
+
+### Step 4 — Install Python packages
+```powershell
+python -m venv venv
+venv\Scripts\pip.exe install -r requirements.txt
+venv\Scripts\pip.exe install "bcrypt==4.0.1"
+```
+
+### Step 5 — Create tables and seed products
+```powershell
+$env:ENV_FILE=".env.development"; venv\Scripts\python.exe -c "from models.database import engine; from models.models import Base; Base.metadata.create_all(bind=engine); print('Tables created!')"
+$env:ENV_FILE=".env.development"; venv\Scripts\python.exe scripts/seed_products.py
+```
+
+### Step 6 — Install frontend packages
+```powershell
+cd ..\frontend
+npm install
+```
+
+---
+
+## Running the app (every time)
+
+Open **two PowerShell windows**:
 
 **Window 1 — Backend:**
-```
+```powershell
 cd backend
-start-dev.bat
+$env:ENV_FILE=".env.development"; venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000
 ```
 
 **Window 2 — Frontend:**
-```
+```powershell
 cd frontend
 npm start
 ```
 
-Open **http://localhost:3000** in your browser.
+Then open **http://localhost:3000** in your browser.
 
 ---
 
-## Running on your iPhone too
+## Running on your iPhone (same WiFi)
 
-Make sure your iPhone and laptop are on **the same WiFi network**, then:
-
-**Window 1 — Backend:**
-```
+**Window 1 — Backend** (note the `--host 0.0.0.0`):
+```powershell
 cd backend
-start-dev-iphone.bat
+$env:ENV_FILE=".env.development"; venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000 --host 0.0.0.0
 ```
-(This prints your laptop's IP address)
 
 **Window 2 — Frontend:**
-```
+```powershell
 cd frontend
-start-iphone.bat
+.\start-iphone.ps1
 ```
-(This also prints your laptop's IP)
 
-On your iPhone, open **Safari** and go to: `http://YOUR_LAPTOP_IP:3000`
+Find your laptop's IP:
+```powershell
+Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike "127.*" }
+```
 
-> The camera feature works best on iPhone Safari — it uses the native camera.
+On your iPhone open Safari and go to: `http://YOUR_LAPTOP_IP:3000`
+
+> Make sure both devices are on the same WiFi network.
 
 ---
 
-## Environment separation
+## Troubleshooting
+
+| Error | Fix |
+|---|---|
+| `react-scripts not recognized` | `npm install` was interrupted — run it again and wait for it to fully finish |
+| `password cannot be longer than 72 bytes` | Run `venv\Scripts\pip.exe install "bcrypt==4.0.1"` then restart backend |
+| `Connection refused port 5432` | Your PostgreSQL runs on 5433 — check `.env.development` has the right port |
+| `relation does not exist` | Tables not created yet — run the Step 5 create_all command above |
+| `python-dotenv could not parse line 10` | Your `.env.development` has junk in it — redo Step 3 above |
+| Script blocked by PowerShell | Run `powershell -ExecutionPolicy Bypass -File .\setup.ps1` |
+
+---
+
+## Dev vs Production
 
 | File | Purpose |
 |---|---|
-| `backend/.env.development` | Local dev config (auto-created by setup) |
-| `backend/.env.production` | Production config (fill in before deploying) |
+| `backend/.env.development` | Local dev config |
+| `backend/.env.production` | Fill in when ready to deploy |
 
-**Dev** uses local disk for photos (`backend/uploads/` folder).
-**Prod** uses AWS S3 for photos.
-
-Never commit `.env.*` files — they're in `.gitignore`.
+Photos in dev are saved to `backend/uploads/` on your laptop.
+In production they go to AWS S3.
 
 ---
 
-## File structure
-```
-skincare-app/
-├── setup-local.bat            ← Run this first (Windows)
-├── .gitignore
-├── backend/
-│   ├── start-dev.bat          ← Start backend (laptop only)
-│   ├── start-dev-iphone.bat   ← Start backend (laptop + iPhone)
-│   ├── .env.development       ← Your local config (auto-created)
-│   ├── .env.production        ← Fill in before deploying
-│   ├── main.py
-│   ├── requirements.txt
-│   ├── config/settings.py
-│   ├── middleware/auth.py
-│   ├── models/
-│   │   ├── models.py          ← Database tables
-│   │   └── database.py
-│   ├── routers/
-│   │   ├── auth.py            ← Register/login
-│   │   ├── photos.py          ← Camera capture → stage → confirm
-│   │   ├── products.py        ← Product search + AI fallback
-│   │   ├── users.py           ← Profiles, follow, milestones
-│   │   ├── explore.py         ← Public feed
-│   │   └── share.py           ← Strava-style share card
-│   ├── services/
-│   │   ├── image_service.py   ← Local disk or S3
-│   │   └── ai_service.py      ← Anthropic product search
-│   └── scripts/
-│       └── seed_products.py   ← Seeds 25 real beauty products
-└── frontend/
-    ├── start-iphone.bat       ← Start frontend for iPhone access
-    ├── package.json
-    └── src/
-        ├── App.jsx            ← Main app (auth, journal, explore, profile)
-        ├── components/
-        │   ├── CameraCapture.jsx  ← Multi-shot camera with review
-        │   └── ShareCard.jsx      ← Share card builder
-        ├── services/api.js
-        └── store/authStore.js
-```
+## Key notes
 
----
-
-## What works locally (no paid services needed)
-
-| Feature | Local dev | Notes |
-|---|---|---|
-| Register / Login | ✅ | |
-| Camera capture | ✅ | Photos saved to `backend/uploads/` |
-| Day 1, Day 2... tracking | ✅ | Auto-calculated |
-| Milestones | ✅ | 7, 14, 30, 45, 90, 180, 365 days |
-| Product search (25 brands) | ✅ | CeraVe, Glow Recipe, COSRX etc. |
-| Explore feed | ✅ | |
-| Share card builder | ✅ | |
-| AI product search | Optional | Add ANTHROPIC_API_KEY to .env.development |
-| iPhone access | ✅ | Same WiFi, use start-dev-iphone.bat |
-
----
-
-## When you're ready to deploy
-
-1. Fill in `backend/.env.production` (database, S3, Anthropic keys)
-2. Deploy backend to Railway / Render / Fly.io
-3. Deploy frontend to Vercel / Netlify
-4. Set `REACT_APP_API_URL=https://your-backend-url.com` in frontend env
-
-Full deployment guide: see DEPLOY.md (coming soon)
+- **Passwords**: Keep them under 20 characters when registering (bcrypt limitation with passlib)
+- **Port**: Your PostgreSQL runs on **5433**, not the default 5432
+- **Python**: Must be **3.11** — not 3.12, 3.13, or 3.14
+- **API docs**: http://localhost:8000/docs (available in dev mode)
