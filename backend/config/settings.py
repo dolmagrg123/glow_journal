@@ -1,3 +1,4 @@
+import os
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -25,7 +26,9 @@ class Settings(BaseSettings):
     ENVIRONMENT: str = "development"
 
     class Config:
-        env_file = ".env"
+        # Which .env file to load, e.g. ENV_FILE=.env.production (defaults to .env.development).
+        # Real environment variables always take precedence over values in the file.
+        env_file = os.environ.get("ENV_FILE", ".env.development")
 
 
 @lru_cache()

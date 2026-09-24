@@ -1,4 +1,3 @@
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -6,11 +5,6 @@ from pathlib import Path
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
-
-# Load the correct .env file based on ENV_FILE env var (defaults to .env.development)
-env_file = os.environ.get("ENV_FILE", ".env.development")
-from dotenv import load_dotenv
-load_dotenv(env_file, override=True)
 
 from config.settings import get_settings
 from models.database import engine

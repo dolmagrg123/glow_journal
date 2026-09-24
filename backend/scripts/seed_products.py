@@ -2,8 +2,8 @@
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from models.database import SessionLocal
-from models.models import Product
+from models.database import SessionLocal, engine
+from models.models import Base, Product
 import uuid
 
 PRODUCTS = [
@@ -99,6 +99,7 @@ PRODUCTS = [
 
 
 def seed():
+    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     added = 0
     for data in PRODUCTS:
