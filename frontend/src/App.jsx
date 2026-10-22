@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import CameraCapture from "./components/CameraCapture";
 import ShareCard from "./components/ShareCard";
-import { getMe, getJournal, deleteEntry, exploreFeed, searchProducts, login, register } from "./services/api";
+import { socialStyles, PeopleSearch, UserProfileView, FollowersSheet, FollowingSheet, FollowRequestsSheet } from "./components/Social";
+import { getMe, updateMe, getJournal, deleteEntry, exploreFeed, followingFeed, login, register } from "./services/api";
 import { useAuthStore } from "./store/authStore";
 
 const MILESTONE_DAYS = [7, 14, 30, 45, 90, 180, 365];
@@ -231,7 +232,34 @@ function JournalTab({ profile, onRefresh, onDeleted }) {
 
 const CONCERNS = ["All", "acne", "hyperpigmentation", "hydration", "anti-aging", "redness", "pores"];
 
-function ExploreTab() {
+const EXPLORE_MODES = [
+  { id: "discover", label: "Discover" },
+  { id: "following", label: "Following" },
+  { id: "people", label: "People" },
+];
+
+function EntryGrid({ entries, loading, emptyText, onOpenUser }) {
+  if (loading) return <div style={{ textAlign: "center", padding: 40 }}><div className="spin" /></div>;
+  if (entries.length === 0) return <div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">{emptyText}</div></div>;
+  return (
+    <div className="explore-grid">
+      {entries.map((e) => (
+        <div key={e.entry_id} className="explore-card" onClick={() => onOpenUser(e.username)}>
+          <img className="explore-img" src={e.thumbnail_url} alt="" />
+          <div className="explore-meta">
+            <div className="explore-user">@{e.username}</div>
+            <div className="explore-day">Day {e.day_number}</div>
+            <div className="explore-products">
+              {e.products.slice(0, 2).map((p) => <span key={p.id} className="exp-tag">{p.name}</span>)}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DiscoverFeed({ onOpenUser }) {
   const [query, setQuery] = useState("");
   const [concern, setConcern] = useState("All");
   const [entries, setEntries] = useState([]);
@@ -248,58 +276,107 @@ function ExploreTab() {
   useEffect(() => { const t = setTimeout(load, 400); return () => clearTimeout(t); }, [load]);
 
   return (
-    <div>
-      <h2 className="section-title">Explore</h2>
+    <>
       <input className="search-bar" placeholder="Search by product, e.g. Glow Recipe toner…" value={query} onChange={(e) => setQuery(e.target.value)} />
       <div className="filter-pills">
         {CONCERNS.map((c) => (
           <div key={c} className={`filter-pill ${concern === c ? "active" : ""}`} onClick={() => setConcern(c)}>{c}</div>
         ))}
       </div>
-      {loading ? (
-        <div style={{ textAlign: "center", padding: 40 }}><div className="spin" /></div>
-      ) : entries.length === 0 ? (
-        <div className="empty-state"><div className="empty-icon">🔍</div><div className="empty-text">No public journeys found.</div></div>
-      ) : (
-        <div className="explore-grid">
-          {entries.map((e) => (
-            <div key={e.entry_id} className="explore-card">
-              <img className="explore-img" src={e.thumbnail_url} alt="" />
-              <div className="explore-meta">
-                <div className="explore-user">@{e.username}</div>
-                <div className="explore-day">Day {e.day_number}</div>
-                <div className="explore-products">
-                  {e.products.slice(0, 2).map((p) => <span key={p.id} className="exp-tag">{p.name}</span>)}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <EntryGrid entries={entries} loading={loading} emptyText="No public journeys found." onOpenUser={onOpenUser} />
+    </>
+  );
+}
+
+function FollowingFeed({ onOpenUser }) {
+  const [entries, setEntries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    followingFeed().then((r) => setEntries(r.data)).catch(() => setEntries([])).finally(() => setLoading(false));
+  }, []);
+  return <EntryGrid entries={entries} loading={loading} emptyText="Follow people to see their journeys here. Find them under People." onOpenUser={onOpenUser} />;
+}
+
+function ExploreTab({ onOpenUser }) {
+  const [mode, setMode] = useState("discover");
+  return (
+    <div>
+      <h2 className="section-title">Explore</h2>
+      <div className="filter-pills">
+        {EXPLORE_MODES.map((m) => (
+          <div key={m.id} className={`filter-pill ${mode === m.id ? "active" : ""}`} onClick={() => setMode(m.id)}>{m.label}</div>
+        ))}
+      </div>
+      {mode === "discover" && <DiscoverFeed onOpenUser={onOpenUser} />}
+      {mode === "following" && <FollowingFeed onOpenUser={onOpenUser} />}
+      {mode === "people" && <PeopleSearch onOpenUser={onOpenUser} />}
     </div>
   );
 }
 
 // ── PROFILE TAB ────────────────────────────────────────────────────────────────
 
-function ProfileTab({ profile, onShare }) {
+function ProfileTab({ profile, onShare, onProfileChange, onOpenUser }) {
   const { logout } = useAuthStore();
+  const [sheet, setSheet] = useState(null); // "followers" | "following" | "requests"
+  const [savingPrivacy, setSavingPrivacy] = useState(false);
   if (!profile) return <div style={{ textAlign: "center", padding: 40 }}><div className="spin" /></div>;
+
+  const refresh = () => getMe().then((r) => onProfileChange(r.data)).catch(() => {});
+  const openFromSheet = (u) => { setSheet(null); onOpenUser(u); };
+
+  const togglePrivacy = async () => {
+    const goingPublic = !profile.is_profile_public;
+    if (goingPublic && profile.pending_requests_count > 0 &&
+        !window.confirm(`Making your account public will approve ${profile.pending_requests_count} pending follow request(s). Continue?`)) return;
+    setSavingPrivacy(true);
+    try {
+      const r = await updateMe({ is_profile_public: goingPublic });
+      onProfileChange(r.data);
+    } catch {
+      alert("Couldn't update privacy. Try again.");
+    } finally { setSavingPrivacy(false); }
+  };
 
   return (
     <div>
       <div className="profile-header">
         <div className="profile-avatar">{profile.avatar_url ? <img src={profile.avatar_url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🌿"}</div>
         <div className="profile-name">{profile.display_name}</div>
-        <div className="profile-username">@{profile.username}</div>
+        <div className="profile-username">@{profile.username}{!profile.is_profile_public && " 🔒"}</div>
         {profile.bio && <p style={{ color: "var(--muted)", fontSize: 13, marginTop: 8 }}>{profile.bio}</p>}
       </div>
 
       <div className="profile-stats">
         <div className="profile-stat"><div className="profile-stat-num">{profile.total_entries}</div><div className="profile-stat-lbl">Photos</div></div>
-        <div className="profile-stat"><div className="profile-stat-num">{profile.current_day}</div><div className="profile-stat-lbl">Days</div></div>
-        <div className="profile-stat"><div className="profile-stat-num">{profile.milestones_achieved?.length || 0}</div><div className="profile-stat-lbl">Milestones</div></div>
+        <div className="profile-stat stat-click" onClick={() => setSheet("followers")}><div className="profile-stat-num">{profile.followers_count}</div><div className="profile-stat-lbl">Followers</div></div>
+        <div className="profile-stat stat-click" onClick={() => setSheet("following")}><div className="profile-stat-num">{profile.following_count}</div><div className="profile-stat-lbl">Following</div></div>
       </div>
+
+      <div className="setting-row" onClick={savingPrivacy ? undefined : togglePrivacy}>
+        <div>
+          <div className="setting-label">Private account</div>
+          <div className="setting-sub">{profile.is_profile_public
+            ? "Anyone can see your journey and follow you."
+            : "Only followers you approve can see your journey."}</div>
+        </div>
+        <div className={`switch ${profile.is_profile_public ? "" : "on"}`} />
+      </div>
+
+      {(!profile.is_profile_public || profile.pending_requests_count > 0) && (
+        <div className="setting-row" onClick={() => setSheet("requests")}>
+          <div className="setting-label">Follow requests</div>
+          {profile.pending_requests_count > 0
+            ? <span className="req-badge">{profile.pending_requests_count}</span>
+            : <span style={{ color: "var(--muted)" }}>›</span>}
+        </div>
+      )}
+
+      {sheet === "followers" && <FollowersSheet username={profile.username} isMine onClose={() => setSheet(null)} onOpenUser={openFromSheet} onChanged={refresh} />}
+      {sheet === "following" && <FollowingSheet username={profile.username} onClose={() => setSheet(null)} onOpenUser={openFromSheet} onChanged={refresh} />}
+      {sheet === "requests" && <FollowRequestsSheet onClose={() => { setSheet(null); refresh(); }} onOpenUser={openFromSheet} onChanged={refresh} />}
+
+      <div style={{ height: 16 }} />
 
       <div style={{ marginBottom: 16 }}>
         <div style={{ color: "var(--muted)", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Milestones</div>
@@ -330,12 +407,23 @@ export default function App() {
   const [showCamera, setShowCamera] = useState(false);
   const [showShare, setShowShare] = useState(false);
   const [journalKey, setJournalKey] = useState(0);
+  const [viewingUser, setViewingUser] = useState(null);
 
   useEffect(() => {
     if (token) getMe().then((r) => setProfile(r.data)).catch(() => {});
   }, [token, journalKey]);
 
-  if (!token) return <><style>{css}</style><AuthScreen /></>;
+  if (!token) return <><style>{css + socialStyles}</style><AuthScreen /></>;
+
+  // Tapping your own name anywhere goes to your Profile tab instead of the public view
+  const openUser = (username) => {
+    if (username === profile?.username) { setViewingUser(null); setTab("profile"); }
+    else setViewingUser(username);
+  };
+  const closeUser = () => {
+    setViewingUser(null);
+    getMe().then((r) => setProfile(r.data)).catch(() => {}); // following count may have changed
+  };
 
   const navItems = [
     { id: "journal", icon: "📔", label: "Journey" },
@@ -345,7 +433,7 @@ export default function App() {
 
   return (
     <>
-      <style>{css}</style>
+      <style>{css + socialStyles}</style>
       <div className="shell">
         <div className="top-bar">
           <div className="app-logo">✦ Glow Journal</div>
@@ -354,8 +442,8 @@ export default function App() {
 
         <div className="content">
           {tab === "journal" && <JournalTab profile={profile} onRefresh={journalKey} onDeleted={() => getMe().then((r) => setProfile(r.data)).catch(() => {})} />}
-          {tab === "explore" && <ExploreTab />}
-          {tab === "profile" && <ProfileTab profile={profile} onShare={() => setShowShare(true)} />}
+          {tab === "explore" && <ExploreTab onOpenUser={openUser} />}
+          {tab === "profile" && <ProfileTab profile={profile} onShare={() => setShowShare(true)} onProfileChange={setProfile} onOpenUser={openUser} />}
         </div>
 
         {/* BOTTOM NAV */}
@@ -386,6 +474,7 @@ export default function App() {
           />
         )}
         {showShare && <ShareCard onClose={() => setShowShare(false)} />}
+        {viewingUser && <UserProfileView username={viewingUser} onClose={closeUser} onOpenUser={openUser} />}
       </div>
     </>
   );

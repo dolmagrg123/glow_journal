@@ -64,6 +64,18 @@ class User(Base):
                              backref="following")
 
 
+class FollowRequest(Base):
+    """Pending request to follow a private profile. Moves to user_follows when accepted."""
+    __tablename__ = "follow_requests"
+
+    requester_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    target_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    requester = relationship("User", foreign_keys=[requester_id])
+    target = relationship("User", foreign_keys=[target_id])
+
+
 class JournalEntry(Base):
     __tablename__ = "journal_entries"
 

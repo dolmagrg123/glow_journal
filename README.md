@@ -1,11 +1,155 @@
 # ✦ Glow Journal — Skincare Tracker
 
-A skincare progress journal: take daily skin photos, tag the products you used, track your journey by day number, browse other people's public journeys, and generate shareable before/after cards.
-
-- **Backend:** FastAPI + SQLAlchemy + PostgreSQL (`backend/`)
-- **Frontend:** React 18 (Create React App) + Zustand (`frontend/`)
+A skincare progress journal. Take daily skin photos, tag the products you used, and track your journey by day number. You can follow other people's journeys, keep your own profile public or private (like Instagram), and make shareable before/after cards.
 
 > ⚠️ Use **PowerShell**, not Command Prompt. All scripts are `.ps1`.
+
+---
+
+## Contents
+
+- [Features](#features)
+- [Tech stack](#tech-stack)
+- [How the project works](#how-the-project-works)
+- [Project structure](#project-structure)
+- [Setup](#prerequisites)
+- [Running the app](#running-the-app)
+- [Using the app](#using-the-app)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
+
+---
+
+## Features
+
+| Feature | What it does |
+|---|---|
+| 📸 **Daily photo journal** | Take photos with the in-app camera, pick the best ones, and save them as a day in your journey |
+| 🧴 **Product tagging** | Tag each entry with the products you used. Search the seeded product list, or use Claude AI search when a key is configured |
+| 📅 **Day tracking & milestones** | Day 1 is your first photo. Milestones unlock at days 7, 14, 30, 45, 60, 90, 180 and 365 |
+| 🔍 **Explore** | Browse public journeys, filtered by product or skin concern |
+| 👥 **Follow people** | Search users by username, follow them, and see their latest photos in a **Following** feed |
+| 🔒 **Public / private profile** | Private accounts work like Instagram: followers have to be approved before they can see your photos |
+| 🔗 **Share cards** | Make a before/after image for a range of days and download it |
+
+---
+
+## Tech stack
+
+### Backend (`backend/`)
+
+| Technology | Used for |
+|---|---|
+| **Python 3.11** | Language. The pinned packages need 3.11 |
+| **FastAPI** | The REST API (all routes under `/api/v1`), request validation, and auto-generated API docs at `/docs` |
+| **Uvicorn** | The server that runs FastAPI. In development it auto-reloads when code changes |
+| **PostgreSQL** | Database for users, journal entries, products, follows, follow requests, milestones and staged photos |
+| **SQLAlchemy 2** | ORM. Tables are defined as Python classes in `models/models.py` and created at startup |
+| **psycopg2** | PostgreSQL driver used by SQLAlchemy |
+| **Pydantic / pydantic-settings** | Request and response schemas, plus loading settings from `.env.development` |
+| **python-jose** | Creates and checks JWT login tokens |
+| **passlib + bcrypt** | Hashes passwords. Plain passwords are never stored |
+| **Pillow** | Makes the 400×400 thumbnails for uploaded photos |
+| **boto3** (optional) | Saves photos to AWS S3 when `STORAGE_BACKEND=s3` |
+| **Anthropic SDK** (optional) | AI product search with Claude when `ANTHROPIC_API_KEY` is set |
+| **slowapi** | Rate limiting. Set up in `main.py` but not yet applied to any route |
+
+### Frontend (`frontend/`)
+
+| Technology | Used for |
+|---|---|
+| **React 18** | The user interface: a single-page app with Journey, Explore and Profile tabs |
+| **Create React App** (`react-scripts`) | Dev server, build tooling, and the dev proxy that forwards `/api` to the backend |
+| **Axios** | HTTP calls to the backend (`src/services/api.js`). It attaches the login token to every request |
+| **Zustand** | A small global store for the login token (`src/store/authStore.js`) |
+| **html2canvas** | Turns the share card into a downloadable PNG |
+| **Browser camera API** (`getUserMedia`) | The in-app camera |
+
+---
+
+## How the project works
+
+```mermaid
+flowchart LR
+    U[Browser / iPhone Safari] -->|React app :3000| F[Frontend]
+    F -->|/api/v1 via Axios + JWT| B[FastAPI backend :8000]
+    B --> DB[(PostgreSQL)]
+    B --> S[Photo storage<br/>backend/uploads or S3]
+    B -.optional.-> AI[Claude API<br/>product search]
+```
+
+### 1. Sign up and log in
+1. The user registers with a username, email and password. The backend hashes the password with bcrypt and saves the user.
+2. The backend returns a **JWT token**, which the frontend keeps in `localStorage`.
+3. Axios sends that token in the `Authorization` header on every API call. The backend uses it to know who is calling.
+
+### 2. Adding a photo to the journal
+```
+Camera ──► POST /photos/capture ──► staged (temp_photos, expires in 24h)
+                                         │
+             choose photos, tag products, write a note, set public/private
+                                         ▼
+                         POST /photos/confirm ──► journal_entries
+```
+1. **Capture.** Each shutter press uploads the photo. The backend saves the original and a thumbnail, and records it as a *staged* photo.
+2. **Review.** The user keeps or discards staged photos and tags products. Product search first looks in the database, then asks Claude if a key is configured.
+3. **Confirm.** The chosen photos become journal entries with a **day number**: days since the user's first entry, plus one.
+4. **Milestones** are checked each time the profile loads.
+
+### 3. Following and privacy
+| | Public profile | Private profile |
+|---|---|---|
+| Who sees name, bio and counts | Everyone | Everyone |
+| Who sees photos | Everyone | Only approved followers |
+| What **Follow** does | Follows right away | Sends a **follow request** that the owner confirms or deletes |
+| Appears in Explore → Discover | Yes | No |
+
+- Accepted follows are stored in `user_follows`. Pending requests are stored in `follow_requests`.
+- Switching from private to public approves all pending requests automatically.
+- The owner can remove a follower at any time, which takes away their access.
+- An entry marked *not public* when it was saved is visible only to its owner, even to followers.
+
+### 4. Explore
+- **Discover:** public entries from public profiles, filterable by product or skin concern.
+- **Following:** the latest entries from people you follow, including private accounts that approved you.
+- **People:** search by username.
+
+---
+
+## Project structure
+
+```
+glow_journal/
+├── backend/
+│   ├── main.py               # FastAPI app: CORS, rate limiter, routers, /uploads static files
+│   ├── config/settings.py    # Settings loaded from .env.development
+│   ├── models/
+│   │   ├── database.py       # DB engine and session
+│   │   └── models.py         # Tables: User, JournalEntry, Product, FollowRequest, Milestone, TempPhoto
+│   ├── middleware/auth.py    # Password hashing, JWT create/verify, current-user dependency
+│   ├── routers/
+│   │   ├── auth.py           # /auth/register, /auth/login
+│   │   ├── photos.py         # capture → confirm, journal, delete
+│   │   ├── products.py       # product search (DB + Claude), create product
+│   │   ├── users.py          # profiles, follow / requests / followers, privacy, user search
+│   │   ├── explore.py        # Discover feed and Following feed
+│   │   └── share.py          # share-card data
+│   ├── services/
+│   │   ├── image_service.py  # save photos locally or to S3, thumbnails
+│   │   └── ai_service.py     # Claude product search
+│   ├── scripts/seed_products.py
+│   ├── setup.ps1             # one-time setup
+│   └── start-dev.ps1         # start the backend
+└── frontend/
+    └── src/
+        ├── App.jsx           # Login screen, Journey / Explore / Profile tabs
+        ├── components/
+        │   ├── CameraCapture.jsx  # camera, staging, product tagging
+        │   ├── ShareCard.jsx      # before/after share card
+        │   └── Social.jsx         # user profiles, follow button, people search, follower lists
+        ├── services/api.js   # every backend call
+        └── store/authStore.js
+```
 
 ---
 
@@ -15,7 +159,7 @@ A skincare progress journal: take daily skin photos, tag the products you used, 
 |---|---|---|
 | Python | **3.11** (3.12+ won't work with the pinned packages) | `winget install --id Python.Python.3.11 --scope user` |
 | Node.js | LTS | https://nodejs.org |
-| PostgreSQL | 18 | https://postgresql.org/download/windows — remember your password |
+| PostgreSQL | 18 | https://postgresql.org/download/windows (remember your password) |
 
 Allow PowerShell scripts (once):
 ```powershell
@@ -33,7 +177,7 @@ cd ..\frontend
 npm install
 ```
 
-`setup.ps1` asks for your PostgreSQL port (default **5433** — Windows installs often use it instead of 5432) and password. It's safe to re-run.
+`setup.ps1` asks for your PostgreSQL port (default **5433**, which Windows installs often use instead of 5432) and password. It's safe to re-run.
 
 To configure manually instead, copy `backend/.env.example` to `backend/.env.development` and fill it in.
 
@@ -53,7 +197,11 @@ cd frontend
 npm start
 ```
 
-### On your iPhone (same WiFi)
+Open **http://localhost:3000**. Press `Ctrl+C` in each window to stop.
+
+### On your iPhone (same Wi-Fi)
+
+> ⚠️ **Known issue:** the iPhone scripts don't fully work yet. Login is blocked by CORS, and Safari only allows the camera on `https://` pages. A fix is planned.
 
 ```powershell
 # Window 1
@@ -69,16 +217,35 @@ Both scripts print the URL to open in Safari (`http://YOUR_LAPTOP_IP:3000`).
 
 ---
 
+## Using the app
+
+1. **Create an account.** Choose a username (3–30 letters, numbers, `.` or `_`), then enter your email and a password of at least 8 characters. You log in with your **email**.
+2. **Take your first photo.** Tap 📸, take one or more photos, keep the best, tag your products, and confirm. This is **Day 1**.
+3. **Come back daily.** Each new photo is saved under its day number on the **Journey** tab. Tap ✕ on a photo to delete it.
+4. **Explore:**
+   - **Discover:** browse public journeys. Filter by product or concern, and tap a card to open that person's profile.
+   - **People:** search by username, then tap **Follow**.
+   - **Following:** see the latest photos from people you follow.
+5. **Profile:**
+   - Turn on **Private account** so only approved followers see your photos.
+   - Open **Follow requests** to **Confirm** or **Delete** requests.
+   - Tap **Followers** or **Following** to see the lists. You can **Remove** a follower.
+   - Tap **Share My Progress** to make a before/after card.
+
+---
+
 ## Configuration
 
 The backend reads the env file named by `ENV_FILE` (default `.env.development`). Real environment variables override values in the file. See `backend/.env.example` for all settings.
 
 | Setting | Notes |
 |---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SECRET_KEY` | Signs login tokens. **Use a long random value in production** |
 | `STORAGE_BACKEND` | `local` saves photos to `backend/uploads/`; `s3` uses AWS S3 |
-| `ANTHROPIC_API_KEY` | Optional — enables AI product search. Without it, only seeded products are searchable |
+| `ANTHROPIC_API_KEY` | Optional. Turns on AI product search. Without it, only seeded products are searchable |
 
-Env files (`backend/.env.development`, `backend/.env.production`) are git-ignored — never commit them.
+Env files (`backend/.env.development`, `backend/.env.production`) and uploaded photos (`backend/uploads/`) are git-ignored. Never commit them.
 
 ---
 
@@ -86,8 +253,10 @@ Env files (`backend/.env.development`, `backend/.env.production`) are git-ignore
 
 | Error | Fix |
 |---|---|
-| `No Python at '...Python311\python.exe'` | Python 3.11 was removed — reinstall it, delete `backend\venv`, re-run `.\setup.ps1` |
-| `react-scripts not recognized` | `npm install` was interrupted — run it again |
-| `Connection refused port 5432` | Your PostgreSQL uses another port — fix `DATABASE_URL` in `.env.development` |
-| `DATABASE_URL Field required` | `.env.development` is missing — run `.\setup.ps1` |
+| `No Python at '...Python311\python.exe'` | Python 3.11 was removed. Reinstall it, delete `backend\venv`, and re-run `.\setup.ps1` |
+| `react-scripts not recognized` | `npm install` was interrupted. Run it again |
+| `Connection refused port 5432` | Your PostgreSQL uses another port. Fix `DATABASE_URL` in `.env.development` |
+| `DATABASE_URL Field required` | `.env.development` is missing. Run `.\setup.ps1` |
+| `start-dev.ps1 is not digitally signed` | Windows marked the file as downloaded. Run `Unblock-File .\start-dev.ps1` (same for the other scripts) |
 | Script blocked by PowerShell | `powershell -ExecutionPolicy Bypass -File .\setup.ps1` |
+| Logged in but nothing loads (401 errors in the backend log) | Your saved login expired. Profile → **Sign Out**, then log in again |

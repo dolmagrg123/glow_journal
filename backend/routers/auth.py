@@ -1,12 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from models.database import get_db
 from models.models import User
 from middleware.auth import hash_password, verify_password, create_access_token
+import re
 import uuid
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+USERNAME_RE = re.compile(r"[A-Za-z0-9._]{3,30}")
+RESERVED_USERNAMES = {"me", "search"}  # would clash with /users/me and /users/search
 
 
 class RegisterRequest(BaseModel):
@@ -32,7 +37,9 @@ class AuthResponse(BaseModel):
 def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(400, "Email already registered.")
-    if db.query(User).filter(User.username == body.username).first():
+    if not USERNAME_RE.fullmatch(body.username) or body.username.lower() in RESERVED_USERNAMES:
+        raise HTTPException(400, "Username must be 3-30 letters, numbers, dots or underscores.")
+    if db.query(User).filter(func.lower(User.username) == body.username.lower()).first():
         raise HTTPException(400, "Username already taken.")
 
     if len(body.password) < 8:

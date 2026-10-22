@@ -38,10 +38,19 @@ export const getUserProfile = (username) => API.get(`/users/${username}`);
 export const getUserEntries = (username, skip = 0, limit = 40) => API.get(`/users/${username}/entries`, { params: { skip, limit } });
 export const followUser     = (username) => API.post(`/users/${username}/follow`);
 export const unfollowUser   = (username) => API.delete(`/users/${username}/follow`);
+export const searchUsers    = (q)        => API.get("/users/search", { params: { q } });
+export const getFollowers   = (username) => API.get(`/users/${username}/followers`);
+export const getFollowing   = (username) => API.get(`/users/${username}/following`);
+export const getFollowRequests    = ()         => API.get("/users/me/follow-requests");
+export const acceptFollowRequest  = (username) => API.post(`/users/me/follow-requests/${username}/accept`);
+export const declineFollowRequest = (username) => API.delete(`/users/me/follow-requests/${username}`);
+export const removeFollower       = (username) => API.delete(`/users/me/followers/${username}`);
 
 // ── Explore ───────────────────────────────────────────────────────────────────
 export const exploreFeed = (product, concern, skip = 0, limit = 24) =>
   API.get("/explore/feed", { params: { product, concern, skip, limit } });
+export const followingFeed = (skip = 0, limit = 24) =>
+  API.get("/explore/following", { params: { skip, limit } });
 
 // ── Share ─────────────────────────────────────────────────────────────────────
 export const buildShareCard = (data)           => API.post("/share/card", data);

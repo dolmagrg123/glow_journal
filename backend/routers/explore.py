@@ -5,8 +5,8 @@ from sqlalchemy.dialects.postgresql import JSONB
 from pydantic import BaseModel
 from typing import List, Optional
 from models.database import get_db
-from models.models import JournalEntry, User, Product, entry_products
-from middleware.auth import get_optional_user
+from models.models import JournalEntry, User, Product, entry_products, user_follows
+from middleware.auth import get_current_user, get_optional_user
 
 router = APIRouter(prefix="/explore", tags=["Explore"])
 
@@ -63,20 +63,43 @@ def explore_feed(
         query = query.filter(cast(User.skin_concerns, JSONB).contains([concern]))
 
     rows = query.order_by(JournalEntry.uploaded_at.desc()).offset(skip).limit(limit).all()
+    return [_to_explore_entry(entry, user) for entry, user in rows]
 
-    result = []
-    for entry, user in rows:
-        result.append(
-            ExploreEntry(
-                entry_id=str(entry.id),
-                thumbnail_url=entry.thumbnail_url,
-                day_number=entry.day_number,
-                uploaded_at=entry.uploaded_at.isoformat(),
-                username=user.username,
-                display_name=user.display_name or user.username,
-                avatar_url=user.avatar_url,
-                products=[{"id": str(p.id), "name": p.name, "brand": p.brand} for p in entry.products],
-                skin_concerns=user.skin_concerns or [],
-            )
-        )
-    return result
+
+@router.get("/following", response_model=List[ExploreEntry])
+def following_feed(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(24, le=100),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Latest entries from people you follow, including approved private accounts."""
+    followed_ids = (
+        db.query(user_follows.c.following_id)
+        .filter(user_follows.c.follower_id == current_user.id)
+        .subquery()
+    )
+    rows = (
+        db.query(JournalEntry, User)
+        .join(User, JournalEntry.user_id == User.id)
+        .filter(JournalEntry.user_id.in_(followed_ids), JournalEntry.is_public == True, User.is_active == True)
+        .order_by(JournalEntry.uploaded_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return [_to_explore_entry(entry, user) for entry, user in rows]
+
+
+def _to_explore_entry(entry: JournalEntry, user: User) -> ExploreEntry:
+    return ExploreEntry(
+        entry_id=str(entry.id),
+        thumbnail_url=entry.thumbnail_url,
+        day_number=entry.day_number,
+        uploaded_at=entry.uploaded_at.isoformat(),
+        username=user.username,
+        display_name=user.display_name or user.username,
+        avatar_url=user.avatar_url,
+        products=[{"id": str(p.id), "name": p.name, "brand": p.brand} for p in entry.products],
+        skin_concerns=user.skin_concerns or [],
+    )
