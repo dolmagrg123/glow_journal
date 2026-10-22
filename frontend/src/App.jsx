@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import CameraCapture from "./components/CameraCapture";
 import ShareCard from "./components/ShareCard";
-import { getMe, getJournal, exploreFeed, searchProducts, login, register } from "./services/api";
+import { getMe, getJournal, deleteEntry, exploreFeed, searchProducts, login, register } from "./services/api";
 import { useAuthStore } from "./store/authStore";
 
 const MILESTONE_DAYS = [7, 14, 30, 45, 90, 180, 365];
@@ -67,6 +67,8 @@ const css = `
   .photo-cell { position:relative; aspect-ratio:1; overflow:hidden; cursor:pointer; }
   .photo-cell img { width:100%; height:100%; object-fit:cover; transition:transform .2s; }
   .photo-cell:hover img { transform:scale(1.04); }
+  .photo-delete-btn { position:absolute; top:4px; right:4px; width:26px; height:26px; border:none; border-radius:50%; background:rgba(0,0,0,.6); color:#fff; font-size:13px; line-height:26px; padding:0; cursor:pointer; }
+  .photo-delete-btn:disabled { opacity:.4; }
   .photo-day-badge { position:absolute; bottom:0; left:0; right:0; background:linear-gradient(transparent,rgba(0,0,0,.7)); padding:12px 6px 6px; font-size:10px; font-weight:700; color:var(--accent-light); }
   .empty-state { text-align:center; padding:60px 20px; color:var(--muted); }
   .empty-icon { font-size:48px; margin-bottom:16px; opacity:.4; }
@@ -156,13 +158,28 @@ function AuthScreen() {
 
 // ── JOURNAL TAB ────────────────────────────────────────────────────────────────
 
-function JournalTab({ profile, onRefresh }) {
+function JournalTab({ profile, onRefresh, onDeleted }) {
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
     getJournal(0, 60).then((r) => setEntries(r.data)).finally(() => setLoading(false));
   }, [onRefresh]);
+
+  const handleDelete = async (entry) => {
+    if (!window.confirm(`Delete your Day ${entry.day_number} photo? This can't be undone.`)) return;
+    setDeletingId(entry.id);
+    try {
+      await deleteEntry(entry.id);
+      setEntries((prev) => prev.filter((x) => x.id !== entry.id));
+      onDeleted?.();
+    } catch {
+      alert("Couldn't delete the photo. Try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   const currentDay = profile?.current_day || 0;
   const nextMilestone = MILESTONE_DAYS.find((d) => d > currentDay);
@@ -201,6 +218,7 @@ function JournalTab({ profile, onRefresh }) {
             <div key={e.id} className="photo-cell">
               <img src={e.thumbnail_url} alt={`Day ${e.day_number}`} />
               <div className="photo-day-badge">Day {e.day_number}</div>
+              <button className="photo-delete-btn" aria-label={`Delete Day ${e.day_number} photo`} disabled={deletingId === e.id} onClick={() => handleDelete(e)}>✕</button>
             </div>
           ))}
         </div>
@@ -335,7 +353,7 @@ export default function App() {
         </div>
 
         <div className="content">
-          {tab === "journal" && <JournalTab profile={profile} onRefresh={journalKey} />}
+          {tab === "journal" && <JournalTab profile={profile} onRefresh={journalKey} onDeleted={() => getMe().then((r) => setProfile(r.data)).catch(() => {})} />}
           {tab === "explore" && <ExploreTab />}
           {tab === "profile" && <ProfileTab profile={profile} onShare={() => setShowShare(true)} />}
         </div>
