@@ -1,16 +1,21 @@
-# Environment files — NEVER commit these
-backend/.env
-backend/.env.development
-backend/.env.production
-frontend/.env
-frontend/.env.local
-frontend/.env.production
+# Environment files — NEVER commit these (any .env file except the example)
+.env
+.env.*
+!.env.example
+
+# Keys and certificates
+*.pem
+*.key
+
+# Tool leftovers
+.Rhistory
 
 # Python
 backend/venv/
 backend/__pycache__/
 backend/**/__pycache__/
 backend/*.pyc
+# Your photos — never commit
 backend/uploads/
 
 # Node

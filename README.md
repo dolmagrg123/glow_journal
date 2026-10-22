@@ -25,12 +25,12 @@ A skincare progress journal. Take daily skin photos, tag the products you used, 
 | Feature | What it does |
 |---|---|
 | 📸 **Daily photo journal** | Take photos with the in-app camera, pick the best ones, and save them as a day in your journey |
-| 🧴 **Product tagging** | Tag each entry with the products you used. Search the seeded product list, or use Claude AI search when a key is configured |
+| 🧴 **Product tagging** | Tag each entry with the products you used. Search about 90 seeded products (drugstore, K-beauty, J-beauty, sunscreens). If a product is missing, add it yourself, or let Claude AI find it when a key is configured |
 | 📅 **Day tracking & milestones** | Day 1 is your first photo. Milestones unlock at days 7, 14, 30, 45, 60, 90, 180 and 365 |
 | 🔍 **Explore** | Browse public journeys, filtered by product or skin concern |
 | 👥 **Follow people** | Search users by username, follow them, and see their latest photos in a **Following** feed |
 | 🔒 **Public / private profile** | Private accounts work like Instagram: followers have to be approved before they can see your photos |
-| 🔗 **Share cards** | Make a before/after image for a range of days and download it |
+| 🔗 **Progress cards** | Pick a day range (e.g. Day 30 → Day 60) to get a before/after card that shows the first and last photo with a big **"30 Day Progress"** headline. Download it or share it |
 
 ---
 
@@ -92,7 +92,7 @@ Camera ──► POST /photos/capture ──► staged (temp_photos, expires in 
                          POST /photos/confirm ──► journal_entries
 ```
 1. **Capture.** Each shutter press uploads the photo. The backend saves the original and a thumbnail, and records it as a *staged* photo.
-2. **Review.** The user keeps or discards staged photos and tags products. Product search first looks in the database, then asks Claude if a key is configured.
+2. **Review.** The user keeps or discards staged photos and tags products (see *Products* below).
 3. **Confirm.** The chosen photos become journal entries with a **day number**: days since the user's first entry, plus one.
 4. **Milestones** are checked each time the profile loads.
 
@@ -109,7 +109,26 @@ Camera ──► POST /photos/capture ──► staged (temp_photos, expires in 
 - The owner can remove a follower at any time, which takes away their access.
 - An entry marked *not public* when it was saved is visible only to its owner, even to followers.
 
-### 4. Explore
+### 4. Products
+```
+type "cerave cleanser" ──► search database (every word must match the brand, name or category)
+                              │
+              found ──► tap to tag      not found ──► Claude AI search (only if a key is set)
+                                                         │
+                                       still missing ──► "+ Add product" form ──► saved & tagged
+```
+- **Seeded products** (`scripts/seed_products.py`) are marked *verified*. Re-running the script only adds products that are missing.
+- **User-added products** are saved as *unverified* so they can be reviewed later. Products Claude finds are saved the same way.
+- **No duplicates:** adding a brand + name that already exists (ignoring case and extra spaces) reuses the existing product.
+
+### 5. Progress cards
+- You choose a day range. The card shows the **first photo** in the range as *Before* and the **last photo** as *After*.
+- The headline is the number of days between those two photos. Day 30 → Day 60 reads **"30 Day Progress"**, and Day 10 → Day 20 reads **"10 Day Progress"**.
+- If you have no photo on the exact start or end day, the card uses the nearest photos inside the range, and the headline counts the days between the photos shown.
+- You need photos on at least two different days in the range.
+- The card also shows the products you used in that range (or the ones you pick) and your caption. It downloads as a PNG through html2canvas.
+
+### 6. Explore
 - **Discover:** public entries from public profiles, filterable by product or skin concern.
 - **Following:** the latest entries from people you follow, including private accounts that approved you.
 - **People:** search by username.
@@ -137,7 +156,7 @@ glow_journal/
 │   ├── services/
 │   │   ├── image_service.py  # save photos locally or to S3, thumbnails
 │   │   └── ai_service.py     # Claude product search
-│   ├── scripts/seed_products.py
+│   ├── scripts/seed_products.py  # about 90 well-known products, safe to re-run
 │   ├── setup.ps1             # one-time setup
 │   └── start-dev.ps1         # start the backend
 └── frontend/
@@ -220,7 +239,7 @@ Both scripts print the URL to open in Safari (`http://YOUR_LAPTOP_IP:3000`).
 ## Using the app
 
 1. **Create an account.** Choose a username (3–30 letters, numbers, `.` or `_`), then enter your email and a password of at least 8 characters. You log in with your **email**.
-2. **Take your first photo.** Tap 📸, take one or more photos, keep the best, tag your products, and confirm. This is **Day 1**.
+2. **Take your first photo.** Tap 📸, take one or more photos, keep the best, tag your products, and confirm. This is **Day 1**. If a product isn't in the list, tap **+ Add product**, enter the brand and name, and it's saved and tagged.
 3. **Come back daily.** Each new photo is saved under its day number on the **Journey** tab. Tap ✕ on a photo to delete it.
 4. **Explore:**
    - **Discover:** browse public journeys. Filter by product or concern, and tap a card to open that person's profile.
@@ -230,7 +249,7 @@ Both scripts print the URL to open in Safari (`http://YOUR_LAPTOP_IP:3000`).
    - Turn on **Private account** so only approved followers see your photos.
    - Open **Follow requests** to **Confirm** or **Delete** requests.
    - Tap **Followers** or **Following** to see the lists. You can **Remove** a follower.
-   - Tap **Share My Progress** to make a before/after card.
+   - Tap **Share My Progress**, pick a day range (e.g. 30 → 60), optionally choose products and a caption, then tap **Preview Card**. Save it as an image or share it.
 
 ---
 

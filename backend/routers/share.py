@@ -28,6 +28,9 @@ class ShareCardResponse(BaseModel):
     day_to: int
     total_days_tracked: int
     photos: List[dict]                # [{day_number, thumbnail_url}]
+    before_photo: dict                # first photo in the range
+    after_photo: dict                 # last photo in the range
+    progress_days: int                # days between the before and after photos
     products: List[dict]              # featured products
     caption: Optional[str]
     share_url: str                    # deep link to profile
@@ -49,11 +52,15 @@ def build_share_card(
             JournalEntry.day_number >= body.day_from,
             JournalEntry.day_number <= body.day_to,
         )
-        .order_by(JournalEntry.day_number.asc())
+        .order_by(JournalEntry.day_number.asc(), JournalEntry.uploaded_at.asc())
         .all()
     )
 
     photos = [{"day_number": e.day_number, "thumbnail_url": e.thumbnail_url} for e in entries]
+    if len({p["day_number"] for p in photos}) < 2:
+        raise HTTPException(400, "You need photos on at least two different days in this range to show progress.")
+    # Before = first photo of the earliest day, after = last photo of the latest day
+    before, after = photos[0], photos[-1]
 
     # Featured products (user selected) or all products used in range
     if body.product_ids:
@@ -83,6 +90,9 @@ def build_share_card(
         day_to=body.day_to,
         total_days_tracked=total,
         photos=photos,
+        before_photo=before,
+        after_photo=after,
+        progress_days=after["day_number"] - before["day_number"],
         products=[{"id": str(p.id), "name": p.name, "brand": p.brand} for p in products],
         caption=body.caption,
         share_url=share_url,

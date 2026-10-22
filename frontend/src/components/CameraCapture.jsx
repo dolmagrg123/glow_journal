@@ -1,5 +1,7 @@
 import React, { useRef, useState, useCallback, useEffect } from "react";
-import { capturePhoto, listTempPhotos, deleteTempPhoto, confirmPhotos, searchProducts } from "../services/api";
+import { capturePhoto, listTempPhotos, deleteTempPhoto, confirmPhotos, searchProducts, createProduct } from "../services/api";
+
+const PRODUCT_CATEGORIES = ["cleanser", "toner", "serum", "moisturizer", "sunscreen", "exfoliant", "treatment", "mask", "eye care", "oil", "other"];
 
 const styles = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -47,6 +49,13 @@ const styles = `
   .product-result-item { padding:8px 12px; color:#ddd; font-size:13px; cursor:pointer; border-radius:8px; display:flex; justify-content:space-between; }
   .product-result-item:hover { background:#222; }
   .product-result-item .brand { color:#888; font-size:11px; }
+  .product-add-link { margin-top:8px; padding:8px 12px; color:#ffd2a3; font-size:13px; cursor:pointer; border-radius:8px; border:1px dashed #444; }
+  .product-add-form { margin-top:8px; background:#1c1c1c; border:1px solid #333; border-radius:12px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .product-add-form .row { display:flex; gap:8px; }
+  .product-add-form button { flex:1; border:none; border-radius:10px; padding:9px; font-size:13px; font-weight:600; cursor:pointer; }
+  .product-add-form .save { background:#ffd2a3; color:#1a1a1a; }
+  .product-add-form .cancel { background:#2a2a2a; color:#ddd; }
+  .product-add-form .err { color:#e74c3c; font-size:12px; }
   .product-tags { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; }
   .product-tag { background:#ffd2a3; color:#1a1a1a; font-size:11px; font-weight:600; padding:4px 10px; border-radius:12px; display:flex; align-items:center; gap:4px; }
   .product-tag button { background:none; border:none; cursor:pointer; font-size:14px; padding:0; line-height:1; color:#1a1a1a; }
@@ -74,6 +83,9 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
   const [notes, setNotes] = useState("");
   const [isPublic, setIsPublic] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [newProduct, setNewProduct] = useState(null); // {brand, name, category} while the add form is open
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [productError, setProductError] = useState("");
 
   // Start camera
   const startCamera = useCallback(async () => {
@@ -149,6 +161,23 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
     }
     setProductQuery("");
     setProductResults([]);
+  };
+
+  const openAddForm = () => {
+    setNewProduct({ brand: "", name: productQuery.trim(), category: "" });
+    setProductError("");
+  };
+
+  const saveNewProduct = async () => {
+    if (!newProduct.brand.trim() || !newProduct.name.trim()) { setProductError("Brand and product name are required."); return; }
+    setSavingProduct(true);
+    try {
+      const r = await createProduct({ brand: newProduct.brand, name: newProduct.name, category: newProduct.category || null });
+      addProduct(r.data); // existing product is returned if it was already in the database
+      setNewProduct(null);
+    } catch (e) {
+      setProductError(e.response?.data?.detail || "Couldn't add the product. Try again.");
+    } finally { setSavingProduct(false); }
   };
 
   const removeProduct = (id) => setSelectedProducts((prev) => prev.filter((p) => p.id !== id));
@@ -248,6 +277,29 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
                     <span className="brand">{p.brand}</span>
                   </div>
                 ))}
+              </div>
+            )}
+            {productQuery.trim() && !searching && !newProduct && (
+              <div className="product-add-link" onClick={openAddForm}>
+                + Can't find it? Add "{productQuery.trim()}" as a new product
+              </div>
+            )}
+            {newProduct && (
+              <div className="product-add-form">
+                <input className="product-search-input" placeholder="Brand, e.g. CeraVe" value={newProduct.brand} autoFocus
+                  onChange={(e) => setNewProduct({ ...newProduct, brand: e.target.value })} />
+                <input className="product-search-input" placeholder="Product name" value={newProduct.name}
+                  onChange={(e) => setNewProduct({ ...newProduct, name: e.target.value })} />
+                <select className="product-search-input" value={newProduct.category}
+                  onChange={(e) => setNewProduct({ ...newProduct, category: e.target.value })}>
+                  <option value="">Category (optional)</option>
+                  {PRODUCT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                {productError && <div className="err">{productError}</div>}
+                <div className="row">
+                  <button className="cancel" onClick={() => setNewProduct(null)}>Cancel</button>
+                  <button className="save" onClick={saveNewProduct} disabled={savingProduct}>{savingProduct ? "Adding…" : "Add & tag"}</button>
+                </div>
               </div>
             )}
             <div className="product-tags">

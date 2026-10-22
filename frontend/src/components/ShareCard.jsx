@@ -10,6 +10,7 @@ export default function ShareCard({ onClose }) {
   const [caption, setCaption] = useState("");
   const [card, setCard] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const cardRef = useRef(null);
 
   useEffect(() => {
@@ -17,16 +18,20 @@ export default function ShareCard({ onClose }) {
   }, [dayFrom, dayTo]);
 
   const build = async () => {
-    setLoading(true);
+    setLoading(true); setError("");
     try {
       const r = await buildShareCard({ day_from: dayFrom, day_to: dayTo, product_ids: selectedProductIds, caption });
       setCard(r.data);
+    } catch (e) {
+      setCard(null);
+      setError(e.response?.data?.detail || "Couldn't build the card. Try again.");
     } finally { setLoading(false); }
   };
 
   const downloadCard = async () => {
     if (!cardRef.current) return;
-    const canvas = await html2canvas(cardRef.current, { scale: 2, backgroundColor: "#0d0d0d" });
+    // useCORS lets html2canvas draw photos served from the backend's address
+    const canvas = await html2canvas(cardRef.current, { scale: 2, backgroundColor: "#0d0d0d", useCORS: true });
     const link = document.createElement("a");
     link.download = `skincare_day${dayFrom}-${dayTo}.png`;
     link.href = canvas.toDataURL("image/png");
@@ -35,7 +40,7 @@ export default function ShareCard({ onClose }) {
 
   const shareNative = async (platform) => {
     const url = card?.share_url || window.location.href;
-    const text = `${caption || "My skincare journey"} — Day ${dayFrom} to Day ${dayTo} 🌿`;
+    const text = `${caption || "My skincare journey"}: ${card?.progress_days} day progress 🌿`;
     const links = {
       instagram: `https://www.instagram.com/`,
       tiktok: `https://www.tiktok.com/`,
@@ -114,48 +119,48 @@ export default function ShareCard({ onClose }) {
         <button style={s.buildBtn} onClick={build} disabled={loading}>
           {loading ? "Building card…" : "Preview Card"}
         </button>
+        {error && <p style={s.error}>{error}</p>}
 
-        {/* CARD PREVIEW */}
+        {/* CARD PREVIEW: before / after with "N Day Progress" headline */}
         {card && (
           <>
             <div ref={cardRef} style={s.card}>
-              {/* header */}
-              <div style={s.cardHeader}>
-                <div>
-                  <div style={s.cardHandle}>@{card.username}</div>
-                  <div style={s.cardName}>{card.display_name}</div>
-                </div>
-                <div style={s.cardBadge}>Day {card.day_from} → {card.day_to}</div>
+              <div style={s.cardTop}>
+                <div style={s.cardHandle}>@{card.username}</div>
+                <div style={s.cardBrand}>✦ Glow Journal</div>
               </div>
 
-              {/* photo strip */}
-              <div style={s.photoStrip}>
-                {card.photos.slice(0, 5).map((p, i) => (
-                  <div key={i} style={s.photoCell}>
-                    <img src={p.thumbnail_url} alt="" style={s.stripImg} />
-                    <div style={s.stripDay}>Day {p.day_number}</div>
+              <div style={s.headline}>
+                <span style={s.headlineNum}>{card.progress_days}</span>
+                <span style={s.headlineText}>Day<br />Progress</span>
+              </div>
+              <div style={s.headlineRule} />
+
+              <div style={s.beforeAfter}>
+                {[["Before", card.before_photo], ["After", card.after_photo]].map(([label, p]) => (
+                  <div key={label} style={s.baCell}>
+                    <img src={p.thumbnail_url} alt={`${label}, day ${p.day_number}`} crossOrigin="anonymous" style={s.baImg} />
+                    <div style={s.baLabel}>
+                      <span style={s.baTitle}>{label}</span>
+                      <span style={s.baDay}>Day {p.day_number}</span>
+                    </div>
                   </div>
                 ))}
               </div>
 
-              {/* stats */}
-              <div style={s.statsRow}>
-                <div style={s.stat}><span style={s.statNum}>{card.total_days_tracked}</span><span style={s.statLbl}>Photos</span></div>
-                <div style={s.stat}><span style={s.statNum}>{card.day_to - card.day_from + 1}</span><span style={s.statLbl}>Day streak</span></div>
-                <div style={s.stat}><span style={s.statNum}>{card.products.length}</span><span style={s.statLbl}>Products</span></div>
-              </div>
-
-              {/* products */}
               {card.products.length > 0 && (
-                <div style={s.productPills}>
-                  {card.products.slice(0, 6).map((p) => (
-                    <span key={p.id} style={s.pill}>{p.name}</span>
-                  ))}
-                </div>
+                <>
+                  <div style={s.routineLabel}>My routine</div>
+                  <div style={s.productPills}>
+                    {card.products.slice(0, 6).map((p) => (
+                      <span key={p.id} style={s.pill}>{p.brand} · {p.name}</span>
+                    ))}
+                  </div>
+                </>
               )}
 
-              {card.caption && <p style={s.cardCaption}>"{card.caption}"</p>}
-              <div style={s.cardFooter}>skincaretracker.app/{card.username}</div>
+              {card.caption && <p style={s.cardCaption}>“{card.caption}”</p>}
+              <div style={s.cardFooter}>{card.display_name} · Day {card.before_photo.day_number} → Day {card.after_photo.day_number}</div>
             </div>
 
             {/* share buttons */}
@@ -194,23 +199,26 @@ const s = {
   productRow: { display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: 8, cursor: "pointer" },
   captionInput: { width: "100%", background: "#1e1e1e", border: "1px solid #333", color: "#fff", borderRadius: 10, padding: "10px 14px", fontSize: 14, resize: "none", boxSizing: "border-box" },
   buildBtn: { width: "100%", background: "linear-gradient(135deg,#ffd2a3,#ffb366)", color: "#1a1a1a", border: "none", borderRadius: 14, padding: "14px", fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 20 },
-  card: { background: "#0d0d0d", borderRadius: 20, padding: 20, border: "1px solid #222", marginBottom: 16 },
-  cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 },
-  cardHandle: { color: "#888", fontSize: 12 },
-  cardName: { color: "#fff", fontSize: 18, fontWeight: 700, fontFamily: "'DM Serif Display',serif" },
-  cardBadge: { background: "#ffd2a3", color: "#1a1a1a", borderRadius: 20, padding: "4px 12px", fontSize: 12, fontWeight: 700 },
-  photoStrip: { display: "flex", gap: 4, marginBottom: 16 },
-  photoCell: { flex: 1, position: "relative" },
-  stripImg: { width: "100%", aspectRatio: "1", objectFit: "cover", borderRadius: 8 },
-  stripDay: { position: "absolute", bottom: 4, left: 4, background: "rgba(0,0,0,.7)", color: "#ffd2a3", fontSize: 9, fontWeight: 700, padding: "2px 5px", borderRadius: 6 },
-  statsRow: { display: "flex", justifyContent: "space-around", marginBottom: 14, paddingBottom: 14, borderBottom: "1px solid #222" },
-  stat: { display: "flex", flexDirection: "column", alignItems: "center", gap: 2 },
-  statNum: { color: "#ffd2a3", fontSize: 22, fontWeight: 700 },
-  statLbl: { color: "#666", fontSize: 11 },
-  productPills: { display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 },
-  pill: { background: "#1e1e1e", color: "#ccc", fontSize: 10, padding: "3px 8px", borderRadius: 10, border: "1px solid #333" },
-  cardCaption: { color: "#bbb", fontSize: 13, fontStyle: "italic", margin: "0 0 12px" },
-  cardFooter: { color: "#444", fontSize: 10, textAlign: "center" },
+  error: { color: "#e74c3c", fontSize: 13, margin: "-8px 0 16px", textAlign: "center" },
+  card: { background: "radial-gradient(ellipse at 20% 0%, #2a2116 0%, #0d0d0d 60%)", borderRadius: 24, padding: "22px 20px 18px", border: "1px solid #2a2520", marginBottom: 16 },
+  cardTop: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 },
+  cardHandle: { color: "#9a8f7f", fontSize: 12, letterSpacing: .5 },
+  cardBrand: { color: "#d4a96a", fontSize: 12, fontFamily: "'Cormorant Garamond',serif", letterSpacing: 1 },
+  headline: { display: "flex", alignItems: "center", justifyContent: "center", gap: 12 },
+  headlineNum: { fontFamily: "'Cormorant Garamond',serif", fontSize: 76, lineHeight: 1, fontWeight: 600, color: "#f0d5a8" },
+  headlineText: { fontFamily: "'Cormorant Garamond',serif", fontSize: 26, lineHeight: 1.05, fontStyle: "italic", color: "#e8e3da", textAlign: "left" },
+  headlineRule: { width: 48, height: 2, background: "linear-gradient(90deg,#d4a96a,#f0d5a8)", borderRadius: 2, margin: "14px auto 18px" },
+  beforeAfter: { display: "flex", gap: 8, marginBottom: 16 },
+  baCell: { flex: 1, position: "relative", borderRadius: 14, overflow: "hidden", border: "1px solid #2a2520" },
+  baImg: { width: "100%", aspectRatio: "3 / 4", objectFit: "cover", display: "block" },
+  baLabel: { position: "absolute", left: 0, right: 0, bottom: 0, padding: "18px 10px 8px", background: "linear-gradient(transparent, rgba(0,0,0,.8))", display: "flex", justifyContent: "space-between", alignItems: "baseline" },
+  baTitle: { color: "#fff", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1.5 },
+  baDay: { color: "#f0d5a8", fontSize: 12, fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic" },
+  routineLabel: { color: "#7a7060", fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 6, textAlign: "center" },
+  productPills: { display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 6, marginBottom: 12 },
+  pill: { background: "rgba(255,255,255,.04)", color: "#ccc", fontSize: 10, padding: "3px 9px", borderRadius: 10, border: "1px solid #2f2a24" },
+  cardCaption: { color: "#cfc6b8", fontSize: 15, fontStyle: "italic", fontFamily: "'Cormorant Garamond',serif", textAlign: "center", margin: "4px 0 12px" },
+  cardFooter: { color: "#5a5248", fontSize: 10, textAlign: "center", letterSpacing: .5 },
   shareRow: { display: "flex", flexWrap: "wrap", gap: 8 },
   shareBtn: { flex: "1 1 calc(50% - 4px)", color: "#fff", border: "none", borderRadius: 12, padding: "11px 8px", fontSize: 13, fontWeight: 600, cursor: "pointer" },
 };

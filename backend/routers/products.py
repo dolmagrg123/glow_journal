@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import and_, or_, func
 from pydantic import BaseModel
 from typing import List, Optional
 from models.database import get_db
@@ -45,16 +45,22 @@ async def search_products(
     1. Search local DB (name + brand + category full-text).
     2. If fewer than 3 results, fall back to Claude AI and persist new products.
     """
-    term = f"%{q.lower()}%"
+    # Every word must appear in the name, brand or category, so "cerave cleanser"
+    # matches brand=CeraVe + name="Foaming Facial Cleanser".
+    words = q.lower().split()
+    if not words:
+        return []
     local = (
         db.query(Product)
-        .filter(
+        .filter(and_(*[
             or_(
-                func.lower(Product.name).like(term),
-                func.lower(Product.brand).like(term),
-                func.lower(Product.category).like(term),
+                func.lower(Product.name).like(f"%{w}%"),
+                func.lower(Product.brand).like(f"%{w}%"),
+                func.lower(Product.category).like(f"%{w}%"),
             )
-        )
+            for w in words
+        ]))
+        .order_by(Product.is_verified.desc(), Product.brand, Product.name)
         .limit(10)
         .all()
     )
@@ -111,8 +117,30 @@ def create_product(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Allow users to add products not yet in the database."""
-    p = Product(id=uuid.uuid4(), **body.model_dump(), is_verified=False)
+    """Allow users to add products not yet in the database.
+
+    If the same brand + name already exists (ignoring case and extra spaces),
+    the existing product is returned instead of creating a duplicate.
+    User-added products are saved as unverified so they can be reviewed later.
+    """
+    name = " ".join(body.name.split())
+    brand = " ".join(body.brand.split())
+    if not name or not brand:
+        raise HTTPException(400, "Brand and product name are required.")
+    if len(name) > 200 or len(brand) > 100:
+        raise HTTPException(400, "Brand or product name is too long.")
+
+    existing = (
+        db.query(Product)
+        .filter(func.lower(Product.name) == name.lower(), func.lower(Product.brand) == brand.lower())
+        .first()
+    )
+    if existing:
+        return _fmt(existing)
+
+    data = body.model_dump()
+    data.update(name=name, brand=brand, category=(body.category or "").strip().lower() or None)
+    p = Product(id=uuid.uuid4(), **data, is_verified=False)
     db.add(p)
     db.commit()
     db.refresh(p)
