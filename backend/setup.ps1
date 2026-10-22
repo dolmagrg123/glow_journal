@@ -56,8 +56,13 @@ if (-not (Test-Path ".env.development")) {
     if ($exists -ne "1") { & $psql -U postgres -p $PgPort -c "CREATE DATABASE skincare_tracker;" | Out-Null }
     Write-Host "[OK] Database ready" -ForegroundColor Green
 
+    # Random secret key per machine (signs login tokens), so no key is shared through the repo
+    $keyBytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($keyBytes)
+    $SecretKey = -join ($keyBytes | ForEach-Object { $_.ToString("x2") })
+
     $envText = "DATABASE_URL=postgresql://postgres:$PgPass@localhost:$PgPort/skincare_tracker
-SECRET_KEY=local-dev-secret-do-not-use-in-prod
+SECRET_KEY=$SecretKey
 STORAGE_BACKEND=local
 BACKEND_URL=http://localhost:8000
 FRONTEND_URL=http://localhost:3000

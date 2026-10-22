@@ -2,16 +2,23 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from config.settings import get_settings
 from models.database import engine
 from models.models import Base
 from routers import auth, photos, products, users, explore, share
+from middleware.rate_limit import limiter
 
 settings = get_settings()
+
+# Never run production with the public default key: anyone could forge login tokens.
+DEFAULT_SECRET_KEYS = {"local-dev-secret-change-in-production", "local-dev-secret-do-not-use-in-prod",
+                       "change-me-to-a-long-random-string"}
+if settings.ENVIRONMENT == "production" and (settings.SECRET_KEY in DEFAULT_SECRET_KEYS or len(settings.SECRET_KEY) < 32):
+    raise RuntimeError("Set SECRET_KEY to a long random value (32+ characters) before running in production. "
+                       "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\"")
 
 print(f"\n🌿 Glow Journal API starting...")
 print(f"   Environment : {settings.ENVIRONMENT}")
@@ -21,8 +28,6 @@ print(f"   Backend URL : {settings.BACKEND_URL}\n")
 
 Base.metadata.create_all(bind=engine)
 Path("uploads").mkdir(exist_ok=True)
-
-limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI(
     title="Skincare Tracker API",

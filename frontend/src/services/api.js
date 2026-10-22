@@ -1,4 +1,5 @@
 import axios from "axios";
+import { useAuthStore } from "../store/authStore";
 
 // In dev: uses the proxy in package.json (localhost:8000)
 // In iPhone dev: uses REACT_APP_API_URL (your laptop's IP)
@@ -14,6 +15,18 @@ API.interceptors.request.use((config) => {
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
+
+// Saved login expired or no longer valid → sign out so the login screen shows,
+// instead of staying "logged in" with nothing loading.
+API.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401 && err.config?.headers?.Authorization) {
+      useAuthStore.getState().logout();
+    }
+    return Promise.reject(err);
+  }
+);
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const register = (data) => API.post("/auth/register", data);

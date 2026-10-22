@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
 from models.database import get_db
 from models.models import User
 from middleware.auth import hash_password, verify_password, create_access_token
+from middleware.rate_limit import limiter
 import re
 import uuid
 
@@ -34,7 +35,8 @@ class AuthResponse(BaseModel):
 
 
 @router.post("/register", response_model=AuthResponse, status_code=201)
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def register(request: Request, body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(400, "Email already registered.")
     if not USERNAME_RE.fullmatch(body.username) or body.username.lower() in RESERVED_USERNAMES:
@@ -61,7 +63,8 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=AuthResponse)
-def login(body: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")  # slows down password guessing
+def login(request: Request, body: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == body.email, User.is_active == True).first()
     if not user or not verify_password(body.password, user.hashed_password):
         raise HTTPException(401, "Invalid email or password.")

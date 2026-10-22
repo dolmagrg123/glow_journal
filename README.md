@@ -52,7 +52,7 @@ A skincare progress journal. Take daily skin photos, tag the products you used, 
 | **Pillow** | Makes the 400×400 thumbnails for uploaded photos |
 | **boto3** (optional) | Saves photos to AWS S3 when `STORAGE_BACKEND=s3` |
 | **Anthropic SDK** (optional) | AI product search with Claude when `ANTHROPIC_API_KEY` is set |
-| **slowapi** | Rate limiting. Set up in `main.py` but not yet applied to any route |
+| **slowapi** | Rate limiting: login is limited to 10 tries a minute and sign-up to 5 a minute per IP, which slows down password guessing |
 
 ### Frontend (`frontend/`)
 
@@ -63,7 +63,7 @@ A skincare progress journal. Take daily skin photos, tag the products you used, 
 | **Axios** | HTTP calls to the backend (`src/services/api.js`). It attaches the login token to every request |
 | **Zustand** | A small global store for the login token (`src/store/authStore.js`) |
 | **html2canvas** | Turns the share card into a downloadable PNG |
-| **Browser camera API** (`getUserMedia`) | The in-app camera |
+| **Browser camera API** (`getUserMedia`) | The in-app camera. The 🖼 button falls back to the phone's own camera or photo library |
 
 ---
 
@@ -157,6 +157,7 @@ glow_journal/
 │   │   ├── image_service.py  # save photos locally or to S3, thumbnails
 │   │   └── ai_service.py     # Claude product search
 │   ├── scripts/seed_products.py  # about 90 well-known products, safe to re-run
+│   ├── scripts/seed_demo.py      # 5 demo profiles with progress photos for testing
 │   ├── setup.ps1             # one-time setup
 │   └── start-dev.ps1         # start the backend
 └── frontend/
@@ -220,7 +221,7 @@ Open **http://localhost:3000**. Press `Ctrl+C` in each window to stop.
 
 ### On your iPhone (same Wi-Fi)
 
-> ⚠️ **Known issue:** the iPhone scripts don't fully work yet. Login is blocked by CORS, and Safari only allows the camera on `https://` pages. A fix is planned.
+Stop the laptop servers first (they use the same ports), then:
 
 ```powershell
 # Window 1
@@ -232,14 +233,43 @@ cd frontend
 .\start-iphone.ps1
 ```
 
-Both scripts print the URL to open in Safari (`http://YOUR_LAPTOP_IP:3000`).
+1. The frontend script prints your address. On the iPhone, open **`https://YOUR_LAPTOP_IP:3000`** in Safari. Note that it's `https`.
+2. **First time only:** Safari warns *"This Connection Is Not Private"* because the dev certificate is self-signed. Tap **Show Details → visit this website**. If Windows asks whether Node.js may use the network, allow it.
+3. Log in and use the app normally. The laptop also works at `https://localhost:3000`.
+
+**How it works:** the phone talks only to the frontend dev server, which forwards `/api` and `/uploads` (photos) to the backend on the laptop. That avoids cross-origin problems, and photo links are stored as relative `/uploads/...` paths so they work on any device. HTTPS is needed because iPhone Safari only allows the live camera on secure pages. If the live camera still isn't available, tap **🖼** on the camera screen to take a photo or pick one from your library.
+
+---
+
+## Demo data for testing
+
+```powershell
+cd backend
+$env:ENV_FILE=".env.development"; .\venv\Scripts\python.exe scripts\seed_demo.py
+```
+
+This creates 5 demo profiles that all follow each other. Each has illustrated progress photos (no real people) roughly every 3 days, with blemishes and redness fading over time, so the before/after cards show real progress.
+
+| Username | Login email | Journey | Photos | Profile |
+|---|---|---|---|---|
+| `amara.glows` | amara@demo.example.com | 180 days | 61 | public |
+| `jin.dewy` | jin@demo.example.com | 120 days | 41 | public |
+| `sofia.clear` | sofia@demo.example.com | 90 days | 31 | **private** |
+| `priya.calm` | priya@demo.example.com | 60 days | 21 | public |
+| `leo.bright` | leo@demo.example.com | 30 days | 11 | public |
+
+- Every demo account's password is **`Demo1234!`**.
+- Running the script again replaces the demo data.
+- The script refuses to run when `ENVIRONMENT=production`, because the demo password is public.
+- `seed_demo.py --remove` deletes it.
+- Your own accounts are never touched.
 
 ---
 
 ## Using the app
 
 1. **Create an account.** Choose a username (3–30 letters, numbers, `.` or `_`), then enter your email and a password of at least 8 characters. You log in with your **email**.
-2. **Take your first photo.** Tap 📸, take one or more photos, keep the best, tag your products, and confirm. This is **Day 1**. If a product isn't in the list, tap **+ Add product**, enter the brand and name, and it's saved and tagged.
+2. **Take your first photo.** Tap 📸, take one or more photos (or tap 🖼 to pick from your library), keep the best, tag your products, and confirm. This is **Day 1**. If a product isn't in the list, tap **+ Add product**, enter the brand and name, and it's saved and tagged.
 3. **Come back daily.** Each new photo is saved under its day number on the **Journey** tab. Tap ✕ on a photo to delete it.
 4. **Explore:**
    - **Discover:** browse public journeys. Filter by product or concern, and tap a card to open that person's profile.
@@ -260,11 +290,21 @@ The backend reads the env file named by `ENV_FILE` (default `.env.development`).
 | Setting | Notes |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string |
-| `SECRET_KEY` | Signs login tokens. **Use a long random value in production** |
+| `SECRET_KEY` | Signs login tokens. `setup.ps1` generates a random one for each machine. With `ENVIRONMENT=production`, the app **refuses to start** unless this is a random value of 32+ characters. Generate one with `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `STORAGE_BACKEND` | `local` saves photos to `backend/uploads/`; `s3` uses AWS S3 |
 | `ANTHROPIC_API_KEY` | Optional. Turns on AI product search. Without it, only seeded products are searchable |
 
 Env files (`backend/.env.development`, `backend/.env.production`) and uploaded photos (`backend/uploads/`) are git-ignored. Never commit them.
+
+---
+
+## Branches
+
+| Branch | Purpose |
+|---|---|
+| `main` | Stable code. Changes arrive here when a branch is ready |
+| `dev_blue` | New app features |
+| `dev_green` | Deployment work, so other people can use the app (hosting, Docker, CI/CD) |
 
 ---
 
@@ -278,4 +318,7 @@ Env files (`backend/.env.development`, `backend/.env.production`) and uploaded p
 | `DATABASE_URL Field required` | `.env.development` is missing. Run `.\setup.ps1` |
 | `start-dev.ps1 is not digitally signed` | Windows marked the file as downloaded. Run `Unblock-File .\start-dev.ps1` (same for the other scripts) |
 | Script blocked by PowerShell | `powershell -ExecutionPolicy Bypass -File .\setup.ps1` |
-| Logged in but nothing loads (401 errors in the backend log) | Your saved login expired. Profile → **Sign Out**, then log in again |
+| Sent back to the login screen | Your saved login expired (logins last 30 days). The app signs you out automatically. Just log in again |
+| `429 Too Many Requests` when logging in | More than 10 login attempts in a minute. Wait a minute |
+| iPhone can't open the page | Use `https://` (not `http://`), make sure the phone is on the same Wi-Fi, and allow Node.js through Windows Firewall |
+| iPhone camera shows "Live camera isn't available" | Tap **🖼** to use the phone's camera or photo library instead |

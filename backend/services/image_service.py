@@ -35,7 +35,9 @@ def _make_thumbnail(data: bytes, size=(400, 400)) -> bytes:
 
 
 def _local_url(rel_path: str) -> str:
-    return f"{settings.BACKEND_URL}/uploads/{rel_path}"
+    # Relative URL: the frontend dev server proxies /uploads to the backend, so the same
+    # link works on the laptop (localhost) and on a phone (laptop's IP).
+    return f"/uploads/{rel_path}"
 
 
 def _s3_url(key: str) -> str:

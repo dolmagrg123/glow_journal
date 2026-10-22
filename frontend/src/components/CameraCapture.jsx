@@ -28,6 +28,7 @@ const styles = `
   .shutter-btn { width:72px; height:72px; border-radius:50%; background:#fff; border:4px solid rgba(255,255,255,.3); cursor:pointer; transition:transform .1s; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
   .shutter-btn:active { transform:scale(.9); }
   .shutter-inner { width:56px; height:56px; border-radius:50%; background:#fff; }
+  .cam-error { position:absolute; left:24px; right:24px; top:50%; transform:translateY(-50%); background:rgba(0,0,0,.7); color:#ffd2a3; text-align:center; padding:16px; border-radius:14px; font-size:14px; line-height:1.4; }
   .cam-flip-btn { background:rgba(255,255,255,.12); border:none; color:#fff; width:44px; height:44px; border-radius:50%; font-size:22px; cursor:pointer; }
   
   /* REVIEW SCREEN */
@@ -72,6 +73,8 @@ const styles = `
 export default function CameraCapture({ currentDay, onDone, onClose }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [cameraError, setCameraError] = useState("");
   const streamRef = useRef(null);
   const [facingMode, setFacingMode] = useState("user");
   const [phase, setPhase] = useState("camera"); // camera | review
@@ -99,8 +102,10 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
       });
       streamRef.current = stream;
       if (videoRef.current) videoRef.current.srcObject = stream;
+      setCameraError("");
     } catch {
-      alert("Camera access denied. Please allow camera permissions.");
+      // iPhone Safari only allows the live camera on https:// pages; the 🖼 button always works
+      setCameraError("Live camera isn't available here. Tap 🖼 to take or choose a photo instead.");
     }
   }, [facingMode]);
 
@@ -118,6 +123,23 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
     ).catch(() => {});
   }, []);
 
+  const stageFile = async (file) => {
+    const res = await capturePhoto(file);
+    setStagedPhotos((prev) => [
+      ...prev,
+      { tempId: res.data.temp_id, thumbnailUrl: res.data.thumbnail_url, previewUrl: res.data.preview_url },
+    ]);
+  };
+
+  // Photo library / native camera (works everywhere, including iPhone over http)
+  const onPickFiles = async (e) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    for (const f of files) {
+      try { await stageFile(f); } catch { alert(`Couldn't add ${f.name}. Use a JPEG, PNG or WebP photo.`); }
+    }
+  };
+
   const takePhoto = async () => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
@@ -128,11 +150,7 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
     canvas.toBlob(async (blob) => {
       const file = new File([blob], `photo_${Date.now()}.jpg`, { type: "image/jpeg" });
       try {
-        const res = await capturePhoto(file);
-        setStagedPhotos((prev) => [
-          ...prev,
-          { tempId: res.data.temp_id, thumbnailUrl: res.data.thumbnail_url, previewUrl: res.data.preview_url },
-        ]);
+        await stageFile(file);
       } catch { alert("Failed to stage photo. Try again."); }
     }, "image/jpeg", 0.92);
   };
@@ -207,10 +225,14 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
           <div className="cam-header">
             <button className="cam-close" onClick={onClose}>✕</button>
             <span className="cam-title">Capture</span>
-            <button
-              className="cam-close"
-              onClick={() => setFacingMode((m) => m === "user" ? "environment" : "user")}
-            >⟳</button>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button className="cam-close" title="Choose photos" onClick={() => fileInputRef.current?.click()}>🖼</button>
+              <button
+                className="cam-close"
+                onClick={() => setFacingMode((m) => m === "user" ? "environment" : "user")}
+              >⟳</button>
+            </div>
+            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={onPickFiles} />
           </div>
 
           <div className="cam-viewfinder">
@@ -218,6 +240,7 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
             <canvas ref={canvasRef} style={{ display: "none" }} />
             <div className="cam-guide" />
             <div className="day-badge">Day {currentDay}</div>
+            {cameraError && <div className="cam-error">{cameraError}</div>}
           </div>
 
           <div className="cam-controls">

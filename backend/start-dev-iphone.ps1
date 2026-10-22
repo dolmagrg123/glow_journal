@@ -1,5 +1,9 @@
 # Glow Journal - Start Backend (iPhone access)
 # Run from backend folder: .\start-dev-iphone.ps1
+#
+# The phone never talks to the backend directly: the frontend dev server
+# (frontend\start-iphone.ps1) forwards /api and /uploads to it. So the backend
+# stays on localhost; this script only points share links at the phone URL.
 
 Write-Host ""
 Write-Host "  Glow Journal Backend - iPhone Access" -ForegroundColor Cyan
@@ -11,39 +15,22 @@ if (-not (Test-Path "venv\Scripts\python.exe")) {
     exit 1
 }
 
-# Get local IP
 $LocalIP = (
-    Get-NetIPAddress -AddressFamily IPv4 |
-    Where-Object { $_.IPAddress -notlike "127.*" -and $_.IPAddress -notlike "169.*" } |
+    Get-NetIPConfiguration |
+    Where-Object { $_.IPv4DefaultGateway -and $_.NetAdapter.Status -eq "Up" } |
     Select-Object -First 1
-).IPAddress
-
-if (-not $LocalIP) {
-    Write-Host "[WARNING] Could not auto-detect IP." -ForegroundColor Yellow
-    $LocalIP = Read-Host "Enter your laptop's WiFi IP (e.g. 192.168.1.5)"
-}
-
-Write-Host "  Your laptop IP: $LocalIP" -ForegroundColor Green
-Write-Host ""
-Write-Host "  On your iPhone (same WiFi), open Safari:" -ForegroundColor Yellow
-Write-Host "    http://${LocalIP}:3000" -ForegroundColor White
-Write-Host ""
-
-# Update BACKEND_URL in .env.development
-(Get-Content .env.development) -replace 'BACKEND_URL=.*', "BACKEND_URL=http://${LocalIP}:8000" |
-    Set-Content .env.development
-Write-Host "  Updated BACKEND_URL to http://${LocalIP}:8000" -ForegroundColor Gray
+).IPv4Address.IPAddress
 
 $env:ENV_FILE = ".env.development"
+if ($LocalIP) {
+    # Real environment variables override .env.development (nothing is written to the file)
+    $env:FRONTEND_URL = "https://${LocalIP}:3000"
+    Write-Host "  Share links point to https://${LocalIP}:3000" -ForegroundColor Gray
+}
 
-Write-Host "  Press Ctrl+C to stop (BACKEND_URL will reset to localhost)" -ForegroundColor Gray
+Write-Host "  Backend: http://localhost:8000 (reached from the phone through the frontend)" -ForegroundColor Green
+Write-Host "  Now run frontend\start-iphone.ps1 in a second window." -ForegroundColor Yellow
+Write-Host "  Press Ctrl+C to stop" -ForegroundColor Gray
 Write-Host ""
 
-try {
-    & venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000 --host 0.0.0.0
-} finally {
-    # Reset back to localhost when stopped
-    (Get-Content .env.development) -replace 'BACKEND_URL=.*', 'BACKEND_URL=http://localhost:8000' |
-        Set-Content .env.development
-    Write-Host "  Reset BACKEND_URL back to localhost" -ForegroundColor Gray
-}
+& venv\Scripts\python.exe -m uvicorn main:app --reload --port 8000
