@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, cast
+from sqlalchemy.dialects.postgresql import JSONB
 from pydantic import BaseModel
 from typing import List, Optional
 from models.database import get_db
@@ -58,13 +59,8 @@ def explore_feed(
         query = query.filter(JournalEntry.id.in_(entry_ids))
 
     if concern:
-        # JSON array contains — works on PostgreSQL
-        query = query.filter(
-            User.skin_concerns.cast(db.bind.dialect.name == "postgresql" and
-                                    __import__("sqlalchemy.dialects.postgresql", fromlist=["JSONB"]).JSONB
-                                    or __import__("sqlalchemy", fromlist=["JSON"]).JSON)
-            .astext.contains(concern)
-        )
+        # JSONB containment (@>): the user's skin_concerns array includes this concern
+        query = query.filter(cast(User.skin_concerns, JSONB).contains([concern]))
 
     rows = query.order_by(JournalEntry.uploaded_at.desc()).offset(skip).limit(limit).all()
 

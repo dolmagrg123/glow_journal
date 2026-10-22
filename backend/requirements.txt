@@ -12,3 +12,4 @@ pydantic-settings==2.3.4
 python-dotenv==1.0.1
 slowapi==0.1.9
 aiofiles==24.1.0
+anthropic==2.1.0
