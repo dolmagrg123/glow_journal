@@ -73,7 +73,6 @@ const styles = `
 export default function CameraCapture({ currentDay, onDone, onClose }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
-  const fileInputRef = useRef(null);
   const [cameraError, setCameraError] = useState("");
   const streamRef = useRef(null);
   const [facingMode, setFacingMode] = useState("user");
@@ -104,8 +103,8 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
       if (videoRef.current) videoRef.current.srcObject = stream;
       setCameraError("");
     } catch {
-      // iPhone Safari only allows the live camera on https:// pages; the 🖼 button always works
-      setCameraError("Live camera isn't available here. Tap 🖼 to take or choose a photo instead.");
+      // Photos can only be taken live; iPhone Safari needs https:// for the camera
+      setCameraError("Camera access is needed to take photos. Allow camera permission (iPhone requires https).");
     }
   }, [facingMode]);
 
@@ -129,15 +128,6 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
       ...prev,
       { tempId: res.data.temp_id, thumbnailUrl: res.data.thumbnail_url, previewUrl: res.data.preview_url },
     ]);
-  };
-
-  // Photo library / native camera (works everywhere, including iPhone over http)
-  const onPickFiles = async (e) => {
-    const files = Array.from(e.target.files || []);
-    e.target.value = "";
-    for (const f of files) {
-      try { await stageFile(f); } catch { alert(`Couldn't add ${f.name}. Use a JPEG, PNG or WebP photo.`); }
-    }
   };
 
   const takePhoto = async () => {
@@ -226,13 +216,11 @@ export default function CameraCapture({ currentDay, onDone, onClose }) {
             <button className="cam-close" onClick={onClose}>✕</button>
             <span className="cam-title">Capture</span>
             <div style={{ display: "flex", gap: 8 }}>
-              <button className="cam-close" title="Choose photos" onClick={() => fileInputRef.current?.click()}>🖼</button>
               <button
                 className="cam-close"
                 onClick={() => setFacingMode((m) => m === "user" ? "environment" : "user")}
               >⟳</button>
             </div>
-            <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple hidden onChange={onPickFiles} />
           </div>
 
           <div className="cam-viewfinder">

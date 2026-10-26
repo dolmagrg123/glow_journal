@@ -165,7 +165,7 @@ function JournalTab({ profile, onRefresh, onDeleted }) {
   const [deletingId, setDeletingId] = useState(null);
 
   useEffect(() => {
-    getJournal(0, 60).then((r) => setEntries(r.data)).finally(() => setLoading(false));
+    getJournal().then((r) => setEntries(r.data)).finally(() => setLoading(false));
   }, [onRefresh]);
 
   const handleDelete = async (entry) => {

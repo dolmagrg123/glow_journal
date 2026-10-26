@@ -37,7 +37,7 @@ export const capturePhoto    = (file) => { const fd = new FormData(); fd.append(
 export const listTempPhotos  = ()     => API.get("/photos/temp");
 export const deleteTempPhoto = (id)   => API.delete(`/photos/temp/${id}`);
 export const confirmPhotos   = (photos) => API.post("/photos/confirm", { photos });
-export const getJournal      = (skip = 0, limit = 60) => API.get("/photos/journal", { params: { skip, limit } });
+export const getJournal      = (skip = 0, limit) => API.get("/photos/journal", { params: { skip, limit } });
 export const deleteEntry     = (id)   => API.delete(`/photos/${id}`);
 
 // ── Products ──────────────────────────────────────────────────────────────────

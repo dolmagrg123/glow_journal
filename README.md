@@ -63,7 +63,7 @@ A skincare progress journal. Take daily skin photos, tag the products you used, 
 | **Axios** | HTTP calls to the backend (`src/services/api.js`). It attaches the login token to every request |
 | **Zustand** | A small global store for the login token (`src/store/authStore.js`) |
 | **html2canvas** | Turns the share card into a downloadable PNG |
-| **Browser camera API** (`getUserMedia`) | The in-app camera. The 🖼 button falls back to the phone's own camera or photo library |
+| **Browser camera API** (`getUserMedia`) | The in-app camera. It is the only way to add photos; there is no file or gallery upload |
 
 ---
 
@@ -237,7 +237,7 @@ cd frontend
 2. **First time only:** Safari warns *"This Connection Is Not Private"* because the dev certificate is self-signed. Tap **Show Details → visit this website**. If Windows asks whether Node.js may use the network, allow it.
 3. Log in and use the app normally. The laptop also works at `https://localhost:3000`.
 
-**How it works:** the phone talks only to the frontend dev server, which forwards `/api` and `/uploads` (photos) to the backend on the laptop. That avoids cross-origin problems, and photo links are stored as relative `/uploads/...` paths so they work on any device. HTTPS is needed because iPhone Safari only allows the live camera on secure pages. If the live camera still isn't available, tap **🖼** on the camera screen to take a photo or pick one from your library.
+**How it works:** the phone talks only to the frontend dev server, which forwards `/api` and `/uploads` (photos) to the backend on the laptop. That avoids cross-origin problems, and photo links are stored as relative `/uploads/...` paths so they work on any device. HTTPS is needed because iPhone Safari only allows the live camera on secure pages.
 
 ---
 
@@ -269,7 +269,7 @@ This creates 5 demo profiles that all follow each other. Each has illustrated pr
 ## Using the app
 
 1. **Create an account.** Choose a username (3–30 letters, numbers, `.` or `_`), then enter your email and a password of at least 8 characters. You log in with your **email**.
-2. **Take your first photo.** Tap 📸, take one or more photos (or tap 🖼 to pick from your library), keep the best, tag your products, and confirm. This is **Day 1**. If a product isn't in the list, tap **+ Add product**, enter the brand and name, and it's saved and tagged.
+2. **Take your first photo.** Tap 📸, take one or more photos with the live camera (uploading from files or the gallery isn't allowed), keep the best, tag your products, and confirm. This is **Day 1**. If a product isn't in the list, tap **+ Add product**, enter the brand and name, and it's saved and tagged.
 3. **Come back daily.** Each new photo is saved under its day number on the **Journey** tab. Tap ✕ on a photo to delete it.
 4. **Explore:**
    - **Discover:** browse public journeys. Filter by product or concern, and tap a card to open that person's profile.
@@ -321,4 +321,4 @@ Env files (`backend/.env.development`, `backend/.env.production`) and uploaded p
 | Sent back to the login screen | Your saved login expired (logins last 30 days). The app signs you out automatically. Just log in again |
 | `429 Too Many Requests` when logging in | More than 10 login attempts in a minute. Wait a minute |
 | iPhone can't open the page | Use `https://` (not `http://`), make sure the phone is on the same Wi-Fi, and allow Node.js through Windows Firewall |
-| iPhone camera shows "Live camera isn't available" | Tap **🖼** to use the phone's camera or photo library instead |
+| iPhone camera shows "Camera access is needed" | Photos can only be taken live. Use the HTTPS setup above and allow camera permission in Safari |

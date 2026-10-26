@@ -213,7 +213,7 @@ def confirm_photos(
 @router.get("/journal", response_model=List[EntryOut], summary="Get current user's journal")
 def get_journal(
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, le=100),
+    limit: Optional[int] = Query(None, ge=1),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
