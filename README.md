@@ -239,6 +239,27 @@ cd frontend
 
 **How it works:** the phone talks only to the frontend dev server, which forwards `/api` and `/uploads` (photos) to the backend on the laptop. That avoids cross-origin problems, and photo links are stored as relative `/uploads/...` paths so they work on any device. HTTPS is needed because iPhone Safari only allows the live camera on secure pages.
 
+### With Docker
+
+Starts the database, backend and frontend together. No Python, Node or PostgreSQL needed, only Docker Desktop (running).
+
+```powershell
+docker compose up --build
+```
+
+Open **http://localhost:3000**. Stop with `Ctrl+C`, then `docker compose down`.
+
+| Container | What it is |
+|---|---|
+| `db` | PostgreSQL 16 |
+| `backend` | FastAPI API |
+| `frontend` | nginx: serves the React app and forwards `/api` and `/uploads` to the backend |
+
+- Only port 3000 is published. The browser talks to nginx, so there are no cross-origin problems.
+- The database starts **empty**, so sign up with a new account (the demo accounts are not in it).
+- Data lives in the `pgdata` and `uploads` Docker volumes and survives restarts. `docker compose down -v` **deletes** them.
+- The backend reads `backend/.env.development`; compose overrides `DATABASE_URL` to point at the `db` container.
+
 ---
 
 ## Demo data for testing
@@ -322,3 +343,5 @@ Env files (`backend/.env.development`, `backend/.env.production`) and uploaded p
 | `429 Too Many Requests` when logging in | More than 10 login attempts in a minute. Wait a minute |
 | iPhone can't open the page | Use `https://` (not `http://`), make sure the phone is on the same Wi-Fi, and allow Node.js through Windows Firewall |
 | iPhone camera shows "Camera access is needed" | Photos can only be taken live. Use the HTTPS setup above and allow camera permission in Safari |
+| `docker compose` image pull fails with `EOF` | A network problem with Docker Hub's CDN. Pull through a mirror and retag: `docker pull mirror.gcr.io/library/postgres:16-alpine` then `docker tag mirror.gcr.io/library/postgres:16-alpine postgres:16-alpine` (same for `python:3.11-slim`) |
+| `cannot find dockerDesktopLinuxEngine pipe` | Docker Desktop isn't running. Start it and retry |
